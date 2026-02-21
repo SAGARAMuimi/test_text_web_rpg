@@ -1,0 +1,10 @@
+# --- コア ---
+Flask==3.0.0
+SQLAlchemy==2.0.28
+python-dotenv==1.0.0
+
+# --- MySQL本番環境向け（SQLite開発時は不要）---
+# mysqlclient==2.2.4
+
+# --- テスト ---
+pytest==7.4.0

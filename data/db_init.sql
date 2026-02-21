@@ -1,0 +1,27 @@
+CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    level INTEGER DEFAULT 1,
+    hp INTEGER DEFAULT 100,
+    attack INTEGER DEFAULT 10,
+    defense INTEGER DEFAULT 5,
+    exp INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS dungeons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    difficulty INTEGER NOT NULL,
+    min_level INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS monsters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    hp INTEGER NOT NULL,
+    attack INTEGER NOT NULL,
+    defense INTEGER NOT NULL,
+    exp_reward INTEGER NOT NULL,
+    dungeon_id INTEGER,
+    FOREIGN KEY (dungeon_id) REFERENCES dungeons (id)
+); 
