@@ -10,7 +10,7 @@ class Config:
 
     DB切替方法: .env の DATABASE_URL を変更するだけでOK
       開発 (SQLite) : DATABASE_URL=sqlite:///game.db
-      本番 (MySQL)  : DATABASE_URL=mysql+mysqlclient://user:pass@host:3306/dbname
+      本番 (MySQL)  : DATABASE_URL=mysql+pymysql://user:pass@host:3306/dbname?charset=utf8mb4
     """
 
     # --- データベース ---

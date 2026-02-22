@@ -124,7 +124,8 @@ class _PartyMemberProxy:
     """
     def __init__(self, data: dict) -> None:
         self.name       = data["name"]
-        self.hp         = data["current_hp"]   # 残HP で Battle を初期化
+        self.hp         = data["current_hp"]   # 現在HP（戦闘開始後の残HP）
+        self.max_hp     = data["max_hp"]        # 最大HP（ヒール上限に使用）
         self.attack     = data["attack"]
         self.class_type = data["class_type"]
         self.id         = data.get("id")
@@ -364,6 +365,9 @@ class DungeonSession:
             False : 全階層クリア（DUNGEON_CLEARED に遷移）
         """
         self.current_floor += 1
+        # dungeon_id は floor と 1:1 対応（シードデータの設計に合わせて同期）
+        self.dungeon_id = self.current_floor
+
         if self.current_floor > DungeonExplorer.MAX_FLOOR:
             self.phase = DungeonPhase.DUNGEON_CLEARED
             self.logs.append("🏆 全ダンジョンを制覇した！")

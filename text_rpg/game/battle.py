@@ -113,7 +113,7 @@ class Battle:
         self.fighters: list[Combatant] = [
             Combatant(
                 name=c.name,
-                max_hp=c.hp,
+                max_hp=getattr(c, 'max_hp', c.hp),  # max_hp がなければ hp を使用
                 current_hp=c.hp,
                 attack_power=c.attack,
                 class_type=getattr(c, "class_type", ""),

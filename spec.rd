@@ -12,7 +12,7 @@
   - SQLAlchemy（ORM）
   - random（エンカウント制御）
   - python-dotenv（環境変数管理）
-  - mysqlclient（MySQL接続時に必要）
+  - PyMySQL（MySQL接続時に必要）
 
 ### 2.2 フォルダ構成
 ```

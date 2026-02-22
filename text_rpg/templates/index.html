@@ -82,6 +82,16 @@
         }
         .party-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
         .char-card { background: rgba(255,255,255,0.07); border-radius: 8px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.1); }
+        .char-card.acting   { border: 2px solid #ffd700; background: rgba(255,215,0,0.13); }
+        .char-card.acted    { opacity: 0.6; }
+        .char-card.defeated { opacity: 0.35; filter: grayscale(80%); }
+        .actor-banner {
+            text-align: center; padding: 8px 16px; margin-bottom: 14px;
+            background: rgba(255,215,0,0.10); border: 1px solid rgba(255,215,0,0.45);
+            border-radius: 8px; color: #ffd700; font-size: 1rem;
+        }
+        .heal-target { margin-bottom: 12px; }
+        .heal-target label { color: #87ceeb; font-size: 0.9rem; margin-right: 8px; }
         .char-card h4 { margin: 0 0 6px; color: #ffd700; font-size: 0.95rem; }
         .hp-bar-bg { background: rgba(0,0,0,0.4); border-radius: 4px; height: 8px; overflow: hidden; margin: 4px 0 6px; }
         .hp-bar      { height: 100%; background: linear-gradient(90deg, #e74c3c, #e67e22); border-radius: 4px; transition: width 0.3s; }
@@ -101,6 +111,26 @@
             font-size: 0.87rem; line-height: 1.7;
         }
         .battle-log p { margin: 2px 0; }
+        .btn-next-floor { background: linear-gradient(135deg, #2980b9, #1abc9c); padding: 12px 32px; font-size: 1.05rem; }
+        .btn-restart    { background: linear-gradient(135deg, #c0392b, #e74c3c); padding: 12px 32px; font-size: 1.05rem; }
+        .result-box {
+            text-align: center; padding: 32px 20px; border-radius: 12px; margin: 20px 0;
+        }
+        .result-box.cleared  { background: rgba(255,215,0,0.12); border: 2px solid #ffd700; }
+        .result-box.gameover { background: rgba(192,57,43,0.18); border: 2px solid #c0392b; }
+        .result-box.floor    { background: rgba(26,188,156,0.12); border: 2px solid #1abc9c; }
+        .result-title { font-size: 2rem; font-weight: bold; margin-bottom: 10px; }
+        .result-sub   { color: #aaa; margin-bottom: 20px; }
+        .enc-badge {
+            display: inline-block; background: rgba(135,206,235,0.12);
+            border: 1px solid rgba(135,206,235,0.4); color: #87ceeb;
+            padding: 3px 14px; border-radius: 16px; font-size: 0.85rem; margin-left: 10px;
+        }
+        .boss-banner {
+            text-align: center; padding: 10px 16px; margin-bottom: 14px;
+            background: rgba(192,57,43,0.18); border: 1px solid rgba(192,57,43,0.6);
+            border-radius: 8px; color: #ff8080; font-size: 1.05rem; font-weight: bold;
+        }
         .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
     </style>
 </head>
@@ -163,66 +193,194 @@
 
     {% else %}
     {# ===== ゲーム画面 ===== #}
-    <div class="floor-badge">&#127984; 第 {{ current_floor }} 階層</div>
+    {% set s = state %}
+    <div class="floor-badge">
+        &#127984; 第 {{ s.current_floor }} / {{ s.max_floor }} 階層
+        {% if s.is_exploring and not s.boss_ready %}
+        <span class="enc-badge">残エンカウント {{ s.encounters_remaining }}</span>
+        {% elif s.boss_ready %}
+        <span class="enc-badge" style="color:#ff8080;border-color:rgba(192,57,43,0.6)">&#128121; ボス戦準備完了</span>
+        {% endif %}
+    </div>
 
-    <div class="party-grid">
-        {% for char in party %}
+    {# ========== ゲームオーバー ========== #}
+    {% if s.is_game_over %}
+    <div class="result-box gameover">
+        <div class="result-title">&#128128; GAME OVER</div>
+        <div class="result-sub">パーティが全滅しました...</div>
+        <form method="POST" action="{{ url_for('reset') }}">
+            <button class="btn-action btn-restart" type="submit">&#127968; タイトルへ戻る</button>
+        </form>
+    </div>
+    <div class="battle-log">
+        {% for log in s.logs[-15:] %}<p>{{ log }}</p>{% endfor %}
+    </div>
+
+    {# ========== ダンジョンクリア ========== #}
+    {% elif s.is_cleared %}
+    <div class="result-box cleared">
+        <div class="result-title">&#127942; DUNGEON CLEAR!</div>
+        <div class="result-sub">全 {{ s.max_floor }} 階層を制覇しました！おめでとうございます！</div>
+        <form method="POST" action="{{ url_for('reset') }}">
+            <button class="btn-action btn-restart" type="submit">&#127968; タイトルへ戻る</button>
+        </form>
+    </div>
+    <div class="battle-log">
+        {% for log in s.logs[-15:] %}<p>{{ log }}</p>{% endfor %}
+    </div>
+
+    {# ========== フロアクリア ========== #}
+    {% elif s.is_floor_cleared %}
+    <div class="result-box floor">
+        <div class="result-title">&#128081; {{ s.current_floor }} 階クリア！</div>
+        <div class="result-sub">ボスを倒した！次の階層へ進もう。</div>
+        <form method="POST" action="{{ url_for('next_floor') }}">
+            <button class="btn-action btn-next-floor" type="submit">&#128682; 次の階層へ進む</button>
+        </form>
+    </div>
+    {# パーティ状態表示 #}
+    <div class="party-grid" style="margin-top:18px">
+        {% for char in s.party %}
         {% set hp_pct = (char.current_hp / char.max_hp * 100) | int %}
-        <div class="char-card">
-            <h4>{{ char.icon }} {{ char.name }}（{{ char.class_name }}）</h4>
+        {% set tmpl = character_templates[char.class_type] %}
+        <div class="char-card {% if char.current_hp <= 0 %}defeated{% endif %}">
+            <h4>{{ tmpl.icon }} {{ char.name }}（{{ tmpl.class_name }}）</h4>
             <div class="hp-bar-bg">
-                <div class="hp-bar {% if hp_pct > 50 %}high{% endif %}"
-                     style="width: {{ hp_pct }}%"></div>
+                <div class="hp-bar {% if hp_pct > 50 %}high{% endif %}" style="width: {{ hp_pct }}%"></div>
             </div>
-            <div class="hp-text">
-                HP: {{ char.current_hp }} / {{ char.max_hp }}&#12288;ATK: {{ char.attack }}
-            </div>
+            <div class="hp-text">HP: {{ char.current_hp }} / {{ char.max_hp }}</div>
         </div>
         {% endfor %}
     </div>
+    <div class="battle-log" style="margin-top:14px">
+        {% for log in s.logs[-15:] %}<p>{{ log }}</p>{% endfor %}
+    </div>
 
-    {% if in_battle and enemy %}
-    {# --- 戦闘画面 --- #}
-    {% set ep = (enemy.current_hp / enemy.max_hp * 100) | int %}
+    {# ========== 戦闘中 ========== #}
+    {% elif s.in_battle and s.battle %}
+    {% set bd = s.battle %}
+    {% set fighters = bd.fighters %}
+    {% set enemy_data = bd.enemy %}
+    {% set current_fighter = fighters[current_char_index] if current_char_index >= 0 else none %}
+    {% set skill_name = skills_info[current_fighter.class_type].name if current_fighter else '必殺技' %}
+    {% set is_cleric = current_fighter and current_fighter.class_type == 'Cleric' %}
+
+    {# ボス戦バナー #}
+    {% if s.phase == 'boss_battle' %}
+    <div class="boss-banner">&#128121; BOSS BATTLE — {{ enemy_data.name }}</div>
+    {% endif %}
+
+    {# 行動者バナー #}
+    {% if current_fighter %}
+    {% set tmpl_cur = character_templates[current_fighter.class_type] %}
+    <div class="actor-banner">
+        &#127919; <strong>{{ current_fighter.name }}</strong>（{{ tmpl_cur.class_name }}）の番です！
+    </div>
+    {% endif %}
+
+    {# パーティ状態 #}
+    <div class="party-grid">
+    {% for f in fighters %}
+    {% set tmpl = character_templates[f.class_type] %}
+    {% set hp_pct = (f.current_hp / f.max_hp * 100) | int if f.max_hp > 0 else 0 %}
+    {% set is_current = loop.index0 == current_char_index %}
+    {% set is_dead = f.current_hp <= 0 %}
+    {% set has_acted = battle_acted[loop.index0] if loop.index0 < (battle_acted | length) else false %}
+    <div class="char-card {% if is_current %}acting{% elif is_dead %}defeated{% elif has_acted %}acted{% endif %}">
+        <h4>
+            {% if is_current %}&#127919;{% elif is_dead %}&#128128;{% elif has_acted %}&#9989;{% else %}{{ tmpl.icon }}{% endif %}
+            {{ f.name }}<small style="color:#aaa;font-weight:normal">（{{ tmpl.class_name }}）</small>
+        </h4>
+        <div class="hp-bar-bg">
+            <div class="hp-bar {% if hp_pct > 50 %}high{% endif %}" style="width: {{ hp_pct }}%"></div>
+        </div>
+        <div class="hp-text">HP: {{ f.current_hp }} / {{ f.max_hp }}</div>
+    </div>
+    {% endfor %}
+    </div>
+
+    {# 敵ボックス #}
+    {% set ep = (enemy_data.current_hp / enemy_data.max_hp * 100) | int if enemy_data.max_hp > 0 else 0 %}
     <div class="enemy-box">
-        <div class="enemy-icon">&#128126;</div>
+        <div class="enemy-icon">{% if enemy_data.is_boss %}&#128121;{% else %}&#128126;{% endif %}</div>
         <div class="enemy-info">
-            <h3>{{ enemy.name }}</h3>
+            <h3>{{ enemy_data.name }}</h3>
             <div class="hp-bar-bg" style="width:220px">
                 <div class="hp-bar" style="width: {{ ep }}%"></div>
             </div>
-            <div class="hp-text">HP: {{ enemy.current_hp }} / {{ enemy.max_hp }}</div>
+            <div class="hp-text">HP: {{ enemy_data.current_hp }} / {{ enemy_data.max_hp }}</div>
         </div>
     </div>
 
+    {# 戦闘ログ #}
     <div class="battle-log" id="battle-log">
-        {% for log in battle_logs %}
-        <p>{{ log }}</p>
-        {% endfor %}
+        {% for log in bd.logs[-15:] %}<p>{{ log }}</p>{% endfor %}
     </div>
 
-    <div class="action-buttons">
-        <form method="POST" action="{{ url_for('battle_action') }}" style="display:contents">
+    {# アクションボタン #}
+    {% if current_char_index >= 0 and current_fighter %}
+    <form method="POST" action="{{ url_for('battle_action') }}">
+        <input type="hidden" name="char_index" value="{{ current_char_index }}">
+        {% if is_cleric %}
+        <div class="heal-target">
+            <label>&#10024; ヒール対象:</label>
+            <select name="skill_target" class="class-select" style="width:auto;display:inline-block">
+                {% for i in range(fighters | length) %}
+                {% if fighters[i].current_hp > 0 %}
+                <option value="{{ i }}">{{ fighters[i].name }}（HP: {{ fighters[i].current_hp }}/{{ fighters[i].max_hp }}）</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        {% else %}
+        <input type="hidden" name="skill_target" value="0">
+        {% endif %}
+        <div class="action-buttons">
             <button class="btn-action btn-attack" type="submit" name="action" value="attack">&#9876;&#65039; 攻撃</button>
-            <button class="btn-action btn-skill"  type="submit" name="action" value="skill" >&#10024; スキル</button>
+            <button class="btn-action btn-skill"  type="submit" name="action" value="skill">&#10024; {{ skill_name }}</button>
             <button class="btn-action btn-defend" type="submit" name="action" value="defend">&#128737;&#65039; 防御</button>
-        </form>
+        </div>
+    </form>
+    {% else %}
+    <p class="hint" style="text-align:center;margin-top:10px">全員が行動しました。敵のターン処理中...</p>
+    {% endif %}
+
+    {# ========== 探索中 ========== #}
+    {% else %}
+    {# パーティ状態 #}
+    <div class="party-grid">
+        {% for char in s.party %}
+        {% set hp_pct = (char.current_hp / char.max_hp * 100) | int %}
+        {% set tmpl = character_templates[char.class_type] %}
+        <div class="char-card {% if char.current_hp <= 0 %}defeated{% endif %}">
+            <h4>{{ tmpl.icon }} {{ char.name }}（{{ tmpl.class_name }}）</h4>
+            <div class="hp-bar-bg">
+                <div class="hp-bar {% if hp_pct > 50 %}high{% endif %}" style="width: {{ hp_pct }}%"></div>
+            </div>
+            <div class="hp-text">HP: {{ char.current_hp }} / {{ char.max_hp }}&#12288;ATK: {{ char.attack }}</div>
+        </div>
+        {% endfor %}
     </div>
 
-    {% else %}
-    {# --- 探索画面 --- #}
-    {% if battle_logs %}
+    {# 直前のログ #}
+    {% if s.logs %}
     <div class="battle-log">
-        {% for log in battle_logs %}
-        <p>{{ log }}</p>
-        {% endfor %}
+        {% for log in s.logs[-10:] %}<p>{{ log }}</p>{% endfor %}
     </div>
     {% endif %}
 
     <div class="action-buttons">
+        {% if s.boss_ready %}
+        <form method="POST" action="{{ url_for('explore') }}">
+            <button class="btn-action btn-attack" type="submit" style="background:linear-gradient(135deg,#c0392b,#8e44ad);padding:11px 28px">
+                &#128121; ボスに挑む
+            </button>
+        </form>
+        {% else %}
         <form method="POST" action="{{ url_for('explore') }}">
             <button class="btn-action btn-explore" type="submit">&#128269; 探索する</button>
         </form>
+        {% endif %}
     </div>
     {% endif %}
     {% endif %}
