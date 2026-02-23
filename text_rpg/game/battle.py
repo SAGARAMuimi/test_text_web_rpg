@@ -20,12 +20,12 @@ from typing import Optional
 # クラス別スキル定義
 # ---------------------------------------------------------------------------
 SKILLS: dict[str, dict] = {
-    "Fighter": {"name": "渾身の一撃",    "desc": "2倍ダメージの強攻撃"},
-    "Mage":    {"name": "ファイアボール", "desc": "防御を無視する魔法攻撃（1.5倍）"},
-    "Rogue":   {"name": "急所攻撃",     "desc": "1〜3倍のランダムダメージ"},
-    "Cleric":  {"name": "ヒール",        "desc": "対象の最大HPの30%を回復"},
+    "Fighter": {"name": "渾身の一撃",    "desc": "2倍ダメージの強攻撃",               "mp_cost": 20},
+    "Mage":    {"name": "ファイアボール", "desc": "防御を無視する魔法攻撃（1.5倍）",     "mp_cost": 25},
+    "Rogue":   {"name": "急所攻撃",     "desc": "1〜3倍のランダムダメージ",           "mp_cost": 15},
+    "Cleric":  {"name": "ヒール",        "desc": "対象の最大HPの30%を回復",           "mp_cost": 20},
 }
-_DEFAULT_SKILL: dict = {"name": "必殺技", "desc": "1.5倍ダメージ"}
+_DEFAULT_SKILL: dict = {"name": "必殺技", "desc": "1.5倍ダメージ", "mp_cost": 20}
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +41,8 @@ class Combatant:
     class_type: str = ""       # Character のみ使用
     is_boss: bool = False      # Enemy のみ使用
     is_defending: bool = False
+    max_mp: int = 0             # 最大MP
+    current_mp: int = 0         # 現在MP
 
     @property
     def is_alive(self) -> bool:
@@ -64,6 +66,8 @@ class Combatant:
             "name":       self.name,
             "hp":         self.current_hp,
             "max_hp":     self.max_hp,
+            "mp":         self.current_mp,
+            "max_mp":     self.max_mp,
             "class_type": self.class_type,
             "is_alive":   self.is_alive,
             "is_defending": self.is_defending,
@@ -117,6 +121,8 @@ class Battle:
                 current_hp=c.hp,
                 attack_power=c.attack,
                 class_type=getattr(c, "class_type", ""),
+                max_mp=getattr(c, 'max_mp', 60),
+                current_mp=getattr(c, 'mp', getattr(c, 'max_mp', 60)),
             )
             for c in party
         ]
@@ -180,6 +186,8 @@ class Battle:
                     "class_type":   f.class_type,
                     "is_boss":      f.is_boss,
                     "is_defending": f.is_defending,
+                    "max_mp":       f.max_mp,
+                    "current_mp":   f.current_mp,
                 }
                 for f in self.fighters
             ],
@@ -286,8 +294,24 @@ class Battle:
         )
 
     def _do_skill(self, fighter: Combatant, skill_target: int) -> None:
-        """クラス別スキル"""
-        skill = SKILLS.get(fighter.class_type, _DEFAULT_SKILL)
+        """クラス別スキル。MP が不足の場合は通常攻撃にフォールバック。"""
+        skill   = SKILLS.get(fighter.class_type, _DEFAULT_SKILL)
+        mp_cost = skill.get("mp_cost", 0)
+
+        # MP 不足チェック
+        if fighter.current_mp < mp_cost:
+            self.logs.append(
+                f"💨 {fighter.name} の MP が不足！"
+                f"（{fighter.current_mp}/{fighter.max_mp}）→ 通常攻撃に切り替え"
+            )
+            self._do_attack(fighter)
+            return
+
+        fighter.current_mp -= mp_cost
+        self.logs.append(
+            f"✨ MP 消費: -{mp_cost}"
+            f"（残り {fighter.current_mp}/{fighter.max_mp}）"
+        )
 
         if fighter.class_type == "Fighter":
             # 渾身の一撃: 2倍ダメージ

@@ -130,6 +130,8 @@ class _PartyMemberProxy:
         self.class_type = data["class_type"]
         self.id         = data.get("id")
         self.level      = data.get("level", 1)
+        self.mp         = data.get("current_mp", 60)   # 現在MP
+        self.max_mp     = data.get("max_mp", 60)        # 最大MP
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +218,8 @@ class DungeonSession:
                 "max_hp":     c.hp,
                 "current_hp": c.hp,
                 "attack":     c.attack,
+                "max_mp":     getattr(c, 'mp', 60),
+                "current_mp": getattr(c, 'mp', 60),
             }
             for c in party_chars
         ]
@@ -326,11 +330,12 @@ class DungeonSession:
           - 通常勝利    --> EXPLORING
           - ボス勝利    --> FLOOR_CLEARED / DUNGEON_CLEARED
         """
-        # 戦闘前に生存していたパーティメンバーの HP を更新
+        # 戦闘前に生存していたパーティメンバーの HP/MP を更新
         living = [p for p in self.party if p["current_hp"] > 0]
         for i, fighter in enumerate(battle.fighters):
             if i < len(living):
                 living[i]["current_hp"] = fighter.current_hp
+                living[i]["current_mp"] = fighter.current_mp
 
         self.logs.extend(battle.logs[-10:])
         self._battle_dict = None
@@ -375,8 +380,11 @@ class DungeonSession:
 
         self.encounters_remaining = DungeonExplorer.roll_encounters()
         self.phase = DungeonPhase.EXPLORING
+        # 階層クリアボーナス: MP 全回復
+        for p in self.party:
+            p["current_mp"] = p.get("max_mp", 60)
         self.logs.append(
             f"🚪 {self.current_floor} 階層に突入！"
-            f"（エンカウント × {self.encounters_remaining}）"
+            f"（エンカウント × {self.encounters_remaining}）・ MP全回復！"
         )
         return True

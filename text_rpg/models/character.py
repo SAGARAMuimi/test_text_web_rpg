@@ -21,6 +21,7 @@ class Character(Base):
     level = Column(Integer, default=1, nullable=False)
     hp = Column(Integer, nullable=False)
     attack = Column(Integer, nullable=False)
+    mp = Column(Integer, default=60, nullable=False)  # 最大MP（スキル使用コスト）
 
     # 属主ユーザーへの back-reference
     user = relationship("User", back_populates="characters")
