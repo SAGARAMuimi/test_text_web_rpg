@@ -21,10 +21,16 @@ seed_enemies()
 
 # キャラクタークラスのテンプレート定義（DBに依存しない固定定義）
 CHARACTER_TEMPLATES = {
-    "Fighter": {"class_name": "戦士",    "hp": 100, "attack": 20, "icon": "⚔️",  "description": "渾身の一撃で2倍ダメージを与える"},
-    "Mage":    {"class_name": "魔法使い", "hp":  70, "attack": 30, "icon": "🔥",  "description": "防御を無視するファイアボール"},
-    "Rogue":   {"class_name": "盗賊",    "hp":  80, "attack": 25, "icon": "🗡️", "description": "急所攻撃で最大3倍ダメージ"},
-    "Cleric":  {"class_name": "僧侶",    "hp":  90, "attack": 15, "icon": "✨",  "description": "ヒールで仲間のHPを30%回復"},
+    "Fighter":    {"class_name": "戦士",      "hp": 100, "attack": 20, "mp": 60, "icon": "⚔️",  "description": "渾身の一撃で2倍ダメージを与える（MP20）"},
+    "Mage":       {"class_name": "魔法使い",  "hp":  70, "attack": 30, "mp": 80, "icon": "🔥",  "description": "防御を無視するファイアボール（MP25）"},
+    "Rogue":      {"class_name": "盗賊",      "hp":  80, "attack": 25, "mp": 50, "icon": "🗡️", "description": "急所攻撃で最大3倍ダメージ（MP15）"},
+    "Cleric":     {"class_name": "僧侶",      "hp":  90, "attack": 15, "mp": 80, "icon": "✨",  "description": "ヒールで仲間のHPを30%回復（MP20）"},
+    "Archer":     {"class_name": "弓使い",    "hp":  85, "attack": 22, "mp": 60, "icon": "🏹",  "description": "狙い撃ちでブレなし2.2倍確定ダメージ（MP20）"},
+    "Monk":       {"class_name": "修行僧",    "hp":  95, "attack": 18, "mp": 55, "icon": "👊",  "description": "百裂拳で3〜5連撃、合計1.5〜3倍ダメージ（MP18）"},
+    "Spellsword": {"class_name": "魔法戦士",  "hp":  90, "attack": 23, "mp": 65, "icon": "🔮",  "description": "魔剣斬で1.8倍・防御半無視の複合攻撃（MP22）"},
+    "Shaman":     {"class_name": "呪術師",    "hp":  75, "attack": 18, "mp": 75, "icon": "🌑",  "description": "呪縛で敵の次の攻撃を50%に弱体化（MP25）"},
+    "Paladin":    {"class_name": "聖騎士",    "hp": 110, "attack": 16, "mp": 75, "icon": "🛡️", "description": "聖域で全員に防御バフ＋HP10%小回復（MP30）"},
+    "Bard":       {"class_name": "バード",    "hp":  80, "attack": 14, "mp": 90, "icon": "🎵",  "description": "激励の歌で全員の次の攻撃を1.5倍に強化（MP25）"},
 }
 
 
@@ -74,7 +80,7 @@ def start_game():
 
     # テンプレートから擬似キャラオブジェクトを生成して DungeonSession を開始
     class _C:
-        __slots__ = ('name', 'hp', 'attack', 'class_type', 'level', 'id')
+        __slots__ = ('name', 'hp', 'attack', 'mp', 'class_type', 'level', 'id')
     chars = []
     for i, class_type in enumerate(slots, 1):
         tmpl = CHARACTER_TEMPLATES[class_type]
@@ -83,6 +89,7 @@ def start_game():
         c.name       = tmpl['class_name']
         c.hp         = tmpl['hp']
         c.attack     = tmpl['attack']
+        c.mp         = tmpl['mp']
         c.class_type = class_type
         c.level      = 1
         chars.append(c)

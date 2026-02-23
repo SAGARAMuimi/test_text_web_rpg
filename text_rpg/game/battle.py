@@ -20,10 +20,16 @@ from typing import Optional
 # クラス別スキル定義
 # ---------------------------------------------------------------------------
 SKILLS: dict[str, dict] = {
-    "Fighter": {"name": "渾身の一撃",    "desc": "2倍ダメージの強攻撃",               "mp_cost": 20},
-    "Mage":    {"name": "ファイアボール", "desc": "防御を無視する魔法攻撃（1.5倍）",     "mp_cost": 25},
-    "Rogue":   {"name": "急所攻撃",     "desc": "1〜3倍のランダムダメージ",           "mp_cost": 15},
-    "Cleric":  {"name": "ヒール",        "desc": "対象の最大HPの30%を回復",           "mp_cost": 20},
+    "Fighter":    {"name": "渾身の一撃",    "desc": "2倍ダメージの強攻撃",                          "mp_cost": 20},
+    "Mage":       {"name": "ファイアボール", "desc": "防御を無視する魔法攻撃（1.5倍）",          "mp_cost": 25},
+    "Rogue":      {"name": "急所攻撃",     "desc": "1〜3倍のランダムダメージ",                  "mp_cost": 15},
+    "Cleric":     {"name": "ヒール",        "desc": "対象の最大HPの30%を回復",                  "mp_cost": 20},
+    "Archer":     {"name": "狙い撃ち",    "desc": "ブレなし確定2.2倍クリティカル",            "mp_cost": 20},
+    "Monk":       {"name": "百裂拳",       "desc": "3〜5連撃、合計ダメージ約1.5〜3倍",         "mp_cost": 18},
+    "Spellsword": {"name": "魔剣斬",       "desc": "1.8倍・防御半無視の複合攻撃",              "mp_cost": 22},
+    "Shaman":     {"name": "呻縛",        "desc": "敵の次の攻撃を 50% に弱体化",             "mp_cost": 25},
+    "Paladin":    {"name": "聖域",        "desc": "全員防御バフ＋HP 10%小回復",             "mp_cost": 30},
+    "Bard":       {"name": "激励の歌",    "desc": "全員の次の攻撃を 1.5倍に強化",            "mp_cost": 25},
 }
 _DEFAULT_SKILL: dict = {"name": "必殺技", "desc": "1.5倍ダメージ", "mp_cost": 20}
 
@@ -43,6 +49,7 @@ class Combatant:
     is_defending: bool = False
     max_mp: int = 0             # 最大MP
     current_mp: int = 0         # 現在MP
+    atk_buff: float = 1.0       # 攻撃力バフ倍率（消費型: 攻撃時にリセット）
 
     @property
     def is_alive(self) -> bool:
@@ -68,6 +75,7 @@ class Combatant:
             "max_hp":     self.max_hp,
             "mp":         self.current_mp,
             "max_mp":     self.max_mp,
+            "atk_buff":   self.atk_buff,
             "class_type": self.class_type,
             "is_alive":   self.is_alive,
             "is_defending": self.is_defending,
@@ -188,6 +196,7 @@ class Battle:
                     "is_defending": f.is_defending,
                     "max_mp":       f.max_mp,
                     "current_mp":   f.current_mp,
+                    "atk_buff":     f.atk_buff,
                 }
                 for f in self.fighters
             ],
@@ -199,6 +208,9 @@ class Battle:
                 "class_type":   self.enemy.class_type,
                 "is_boss":      self.enemy.is_boss,
                 "is_defending": self.enemy.is_defending,
+                "max_mp":       self.enemy.max_mp,
+                "current_mp":   self.enemy.current_mp,
+                "atk_buff":     self.enemy.atk_buff,
             },
             "logs":    self.logs,
             "_acted":  self._acted,
@@ -285,7 +297,9 @@ class Battle:
 
     def _do_attack(self, fighter: Combatant) -> None:
         """通常攻撃: 基本ダメージ ± 20% のぶれ"""
-        damage = _calc_damage(fighter.attack_power)
+        effective_atk    = int(fighter.attack_power * fighter.atk_buff)
+        fighter.atk_buff = 1.0
+        damage = _calc_damage(effective_atk)
         actual = self.enemy.take_damage(damage)
         self.logs.append(
             f"⚔️  {fighter.name} の攻撃！"
@@ -313,9 +327,16 @@ class Battle:
             f"（残り {fighter.current_mp}/{fighter.max_mp}）"
         )
 
+        # 攻撃力バフを計算・消費（Cleric/Paladin/Bard は攻撃を行わないため消費のみ）
+        atk_mult      = fighter.atk_buff
+        effective_atk = int(fighter.attack_power * atk_mult)
+        fighter.atk_buff = 1.0
+        if atk_mult != 1.0:
+            self.logs.append(f"⬆️  攻撃力バフ発動！（×{atk_mult:.1f}）")
+
         if fighter.class_type == "Fighter":
             # 渾身の一撃: 2倍ダメージ
-            damage = _calc_damage(fighter.attack_power * 2)
+            damage = _calc_damage(effective_atk * 2)
             actual = self.enemy.take_damage(damage)
             self.logs.append(
                 f"💥 {fighter.name} の「{skill['name']}」！"
@@ -325,7 +346,7 @@ class Battle:
 
         elif fighter.class_type == "Mage":
             # ファイアボール: 1.5倍・防御無視
-            damage = _calc_damage(int(fighter.attack_power * 1.5))
+            damage = _calc_damage(int(effective_atk * 1.5))
             orig = self.enemy.is_defending
             self.enemy.is_defending = False      # 防御貫通
             actual = self.enemy.take_damage(damage)
@@ -339,7 +360,7 @@ class Battle:
         elif fighter.class_type == "Rogue":
             # 急所攻撃: 1〜3倍ランダムダメージ
             multiplier = random.uniform(1.0, 3.0)
-            damage = _calc_damage(int(fighter.attack_power * multiplier))
+            damage = _calc_damage(int(effective_atk * multiplier))
             actual = self.enemy.take_damage(damage)
             self.logs.append(
                 f"🗡️  {fighter.name} の「{skill['name']}」！"
@@ -359,9 +380,83 @@ class Battle:
                 f"（{target.current_hp}/{target.max_hp}）"
             )
 
+        elif fighter.class_type == "Archer":
+            # 狙い撃ち: ブレなし確定 2.2倍クリティカル
+            damage = max(1, int(effective_atk * 2.2))
+            actual = self.enemy.take_damage(damage)
+            self.logs.append(
+                f"🎯 {fighter.name} の「{skill['name']}」！"
+                f" → {self.enemy.name} に {actual} 確定ダメージ！"
+                f"（残HP: {self.enemy.current_hp}/{self.enemy.max_hp}）"
+            )
+
+        elif fighter.class_type == "Monk":
+            # 百裂拳: 3〜5連撃、各ヒット約 0.6倍
+            hits  = random.randint(3, 5)
+            total = 0
+            for _ in range(hits):
+                dmg    = _calc_damage(int(effective_atk * 0.6))
+                actual = self.enemy.take_damage(dmg)
+                total += actual
+                if not self.enemy.is_alive:
+                    break
+            self.logs.append(
+                f"👊 {fighter.name} の「{skill['name']}」！"
+                f" {hits} 連撃 → 合計 {total} ダメージ！"
+                f"（残HP: {self.enemy.current_hp}/{self.enemy.max_hp}）"
+            )
+
+        elif fighter.class_type == "Spellsword":
+            # 魔剣斬: 1.8倍・防御半無視（防御中でも25%軽減に留まる）
+            damage = _calc_damage(int(effective_atk * 1.8))
+            if self.enemy.is_defending:
+                actual = max(1, int(damage * 0.75))   # 通常半減→25%軽減に緩和
+                self.enemy.current_hp = max(0, self.enemy.current_hp - actual)
+            else:
+                actual = self.enemy.take_damage(damage)
+            self.logs.append(
+                f"⚔️✨ {fighter.name} の「{skill['name']}」！"
+                f" → {self.enemy.name} に {actual} 魔法物理ダメージ！"
+                + ("（防御貫通）" if self.enemy.is_defending else "")
+                + f"（残HP: {self.enemy.current_hp}/{self.enemy.max_hp}）"
+            )
+
+        elif fighter.class_type == "Shaman":
+            # 呪縛: 敵の次の攻撃を50%に弱体化（重ねがけは最低値を維持）
+            self.enemy.atk_buff = min(self.enemy.atk_buff, 0.5)
+            self.logs.append(
+                f"🌑 {fighter.name} の「{skill['name']}」！"
+                f" → {self.enemy.name} を呪縛！次の攻撃が 50% に弱体化！"
+            )
+
+        elif fighter.class_type == "Paladin":
+            # 聖域: 生存全員に防御バフ＋HP 10% 小回復
+            alive = [f for f in self.fighters if f.is_alive]
+            healed_msgs = []
+            for f in alive:
+                f.is_defending = True
+                amt    = max(1, int(f.max_hp * 0.10))
+                actual = f.heal(amt)
+                healed_msgs.append(f"{f.name}+{actual}")
+            self.logs.append(
+                f"🛡️✨ {fighter.name} の「{skill['name']}」！"
+                f" → 全員防御体勢＋小回復！（{', '.join(healed_msgs)}）"
+            )
+
+        elif fighter.class_type == "Bard":
+            # 激励の歌: 生存全員の次の攻撃を 1.5倍に強化
+            alive = [f for f in self.fighters if f.is_alive]
+            for f in alive:
+                f.atk_buff = 1.5
+            names = "・".join(f.name for f in alive)
+            self.logs.append(
+                f"🎵 {fighter.name} の「{skill['name']}」！"
+                f" → {names} の次の攻撃が 1.5 倍に強化！"
+            )
+
         else:
             # 未定義クラス: デフォルト 1.5倍攻撃
-            damage = _calc_damage(int(fighter.attack_power * 1.5))
+            damage = _calc_damage(int(effective_atk * 1.5))
             actual = self.enemy.take_damage(damage)
             self.logs.append(
                 f"✨ {fighter.name} の「{skill['name']}」！"
@@ -381,12 +476,16 @@ class Battle:
         alive = [f for f in self.fighters if f.is_alive]
         if not alive:
             return
-        target = random.choice(alive)
-        damage = _calc_damage(self.enemy.attack_power)
+        target    = random.choice(alive)
+        debuffed  = self.enemy.atk_buff < 1.0
+        eff_atk   = int(self.enemy.attack_power * self.enemy.atk_buff)
+        self.enemy.atk_buff = 1.0   # デバフ消費
+        damage = _calc_damage(eff_atk)
         actual = target.take_damage(damage)
         boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
         self.logs.append(
-            f"{boss_mark} {self.enemy.name} の攻撃！"
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
             f" → {target.name} に {actual} ダメージ！"
             f"（残HP: {target.current_hp}/{target.max_hp}）"
         )
