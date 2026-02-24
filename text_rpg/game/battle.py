@@ -144,6 +144,13 @@ class Battle:
         self.logs: list[str] = []
         self._acted: list[bool] = [False] * len(self.fighters)
         self._result: Optional[str] = None
+        self._enemy_cooldowns: dict[str, int] = {
+            "wizard_aoe": 0,
+            "lich_aoe": 0,
+            "ork_king_sweep": 0,
+            "dragon_breath": 0,
+        }
+        self._enemy_defend_turns: int = 0
 
         boss_mark = "👹" if self.enemy.is_boss else "👾"
         self.logs.append(f"{boss_mark} {self.enemy.name} が現れた！（HP: {self.enemy.max_hp}）")
@@ -215,6 +222,8 @@ class Battle:
             "logs":    self.logs,
             "_acted":  self._acted,
             "_result": self._result,
+            "_enemy_cooldowns": self._enemy_cooldowns,
+            "_enemy_defend_turns": self._enemy_defend_turns,
         }
 
     @classmethod
@@ -229,6 +238,16 @@ class Battle:
         instance.logs     = data["logs"]
         instance._acted   = data["_acted"]
         instance._result  = data["_result"]
+        instance._enemy_cooldowns = data.get(
+            "_enemy_cooldowns",
+            {
+                "wizard_aoe": 0,
+                "lich_aoe": 0,
+                "ork_king_sweep": 0,
+                "dragon_breath": 0,
+            },
+        )
+        instance._enemy_defend_turns = data.get("_enemy_defend_turns", 0)
         return instance
 
     def process_turn(
@@ -472,18 +491,311 @@ class Battle:
         )
 
     def _enemy_turn(self) -> None:
-        """敵ターン: 生存中のランダムなパーティメンバーを攻撃"""
+        """敵ターン: 敵種別に応じて行動（通常攻撃 / 魔法行動）"""
         alive = [f for f in self.fighters if f.is_alive]
         if not alive:
             return
-        target    = random.choice(alive)
-        debuffed  = self.enemy.atk_buff < 1.0
-        eff_atk   = int(self.enemy.attack_power * self.enemy.atk_buff)
-        self.enemy.atk_buff = 1.0   # デバフ消費
+
+        # 敵の防御状態は「敵の次ターン開始時」に解除（= プレイヤー側1巡分だけ有効）
+        if self._enemy_defend_turns > 0:
+            self._enemy_defend_turns -= 1
+            if self._enemy_defend_turns == 0:
+                self.enemy.is_defending = False
+
+        # クールダウン経過
+        self._tick_enemy_cooldowns()
+
+        debuffed = self.enemy.atk_buff < 1.0
+        eff_atk  = int(self.enemy.attack_power * self.enemy.atk_buff)
+        self.enemy.atk_buff = 1.0   # 弱体化は敵の次行動で消費
+
+        if self.enemy.name == "ウィザード":
+            self._enemy_turn_wizard(alive, eff_atk, debuffed)
+            return
+
+        if self.enemy.name == "リッチ":
+            self._enemy_turn_lich(alive, eff_atk, debuffed)
+            return
+
+        if self.enemy.name == "オークキング":
+            self._enemy_turn_ork_king(alive, eff_atk, debuffed)
+            return
+
+        if self.enemy.name == "ドラゴン":
+            self._enemy_turn_dragon(alive, eff_atk, debuffed)
+            return
+
+        if self.enemy.name == "トロール":
+            self._enemy_turn_troll(alive, eff_atk, debuffed)
+            return
+
+        if self.enemy.name == "ダークナイト":
+            self._enemy_turn_dark_knight(alive, eff_atk, debuffed)
+            return
+
+        target = random.choice(alive)
         damage = _calc_damage(eff_atk)
         actual = target.take_damage(damage)
         boss_mark = "👹" if self.enemy.is_boss else "👾"
         debuff_note = "（弱体化中）" if debuffed else ""
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _tick_enemy_cooldowns(self) -> None:
+        """敵専用スキルのクールダウンを1進める。"""
+        for key, value in self._enemy_cooldowns.items():
+            if value > 0:
+                self._enemy_cooldowns[key] = value - 1
+
+    def _enemy_turn_wizard(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """ウィザードの行動: 全体魔法 / 単体魔法 / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+
+        # アークフレア: 全体 0.8倍（2ターンCT）
+        if (
+            self._enemy_cooldowns.get("wizard_aoe", 0) == 0
+            and len(alive) >= 2
+            and random.random() < 0.35
+        ):
+            self._enemy_cooldowns["wizard_aoe"] = 2
+            total = 0
+            details: list[str] = []
+            for target in alive:
+                damage = _calc_damage(int(eff_atk * 0.8))
+                actual = target.take_damage(damage)
+                total += actual
+                details.append(f"{target.name}:{actual}")
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「アークフレア」！{debuff_note}"
+                f" → 全体に魔法ダメージ！[{', '.join(details)}]"
+                f"（合計 {total}）"
+            )
+            return
+
+        # ファイアボルト: 単体 1.4倍・防御無視
+        if random.random() < 0.60:
+            target = random.choice(alive)
+            damage = _calc_damage(int(eff_atk * 1.4))
+            orig = target.is_defending
+            target.is_defending = False
+            actual = target.take_damage(damage)
+            target.is_defending = orig
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「ファイアボルト」！{debuff_note}"
+                f" → {target.name} に {actual} 魔法ダメージ！（防御無視）"
+                f"（残HP: {target.current_hp}/{target.max_hp}）"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _enemy_turn_lich(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """リッチの行動: 全体魔法 / ドレイン / 呪詛 / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+        roll = random.random()
+
+        # 死霊波: 全体 0.9倍（3ターンCT）
+        if (
+            self._enemy_cooldowns.get("lich_aoe", 0) == 0
+            and len(alive) >= 2
+            and roll < 0.25
+        ):
+            self._enemy_cooldowns["lich_aoe"] = 3
+            total = 0
+            details: list[str] = []
+            for target in alive:
+                damage = _calc_damage(int(eff_atk * 0.9))
+                actual = target.take_damage(damage)
+                total += actual
+                details.append(f"{target.name}:{actual}")
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「死霊波」！{debuff_note}"
+                f" → 全体に呪術ダメージ！[{', '.join(details)}]"
+                f"（合計 {total}）"
+            )
+            return
+
+        # ライフドレイン: 単体 1.0倍 + 与ダメの50%回復
+        if roll < 0.60:
+            target = random.choice(alive)
+            damage = _calc_damage(eff_atk)
+            actual = target.take_damage(damage)
+            heal_amount = max(1, int(actual * 0.5))
+            healed = self.enemy.heal(heal_amount)
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「ライフドレイン」！{debuff_note}"
+                f" → {target.name} に {actual} ダメージ、{healed} 回復！"
+                f"（敵HP: {self.enemy.current_hp}/{self.enemy.max_hp}）"
+            )
+            return
+
+        # 呪詛: 対象の次攻撃を70%化
+        if roll < 0.85:
+            target = random.choice(alive)
+            target.atk_buff = min(target.atk_buff, 0.7)
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「呪詛」！{debuff_note}"
+                f" → {target.name} の次の攻撃が弱体化（70%）！"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _enemy_turn_ork_king(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """オークキングの行動: 薙ぎ払い / 渾身の一撃 / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+
+        # 薙ぎ払い: 防御有効の全体攻撃（2ターンCT）
+        if (
+            self._enemy_cooldowns.get("ork_king_sweep", 0) == 0
+            and len(alive) >= 2
+            and random.random() < 0.40
+        ):
+            self._enemy_cooldowns["ork_king_sweep"] = 2
+            total = 0
+            details: list[str] = []
+            for target in alive:
+                damage = _calc_damage(int(eff_atk * 0.9))
+                actual = target.take_damage(damage)  # 防御が有効
+                total += actual
+                details.append(f"{target.name}:{actual}")
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「薙ぎ払い」！{debuff_note}"
+                f" → 全体に物理ダメージ！[{', '.join(details)}]"
+                f"（合計 {total}）"
+            )
+            return
+
+        # 渾身の一撃: 単体 2.0倍
+        if random.random() < 0.50:
+            target = random.choice(alive)
+            damage = _calc_damage(int(eff_atk * 2.0))
+            actual = target.take_damage(damage)
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「渾身の一撃」！{debuff_note}"
+                f" → {target.name} に {actual} 大ダメージ！"
+                f"（残HP: {target.current_hp}/{target.max_hp}）"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _enemy_turn_dragon(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """ドラゴンの行動: ブレス / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+
+        # ブレス: 全体攻撃。防御効果を半減（防御中でも 25% 軽減止まり）
+        if (
+            self._enemy_cooldowns.get("dragon_breath", 0) == 0
+            and len(alive) >= 2
+            and random.random() < 0.30
+        ):
+            self._enemy_cooldowns["dragon_breath"] = 3
+            total = 0
+            details: list[str] = []
+            for target in alive:
+                damage = _calc_damage(int(eff_atk * 1.0))
+                if target.is_defending:
+                    actual = max(1, int(damage * 0.75))
+                    target.current_hp = max(0, target.current_hp - actual)
+                else:
+                    actual = target.take_damage(damage)
+                total += actual
+                details.append(f"{target.name}:{actual}")
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「ブレス」！{debuff_note}"
+                f" → 全体に灼熱ダメージ！（防御効果半減）[{', '.join(details)}]"
+                f"（合計 {total}）"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _enemy_turn_troll(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """トロールの行動: 渾身の一撃 / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+
+        # 渾身の一撃: 単体 2.0倍
+        if random.random() < 0.45:
+            target = random.choice(alive)
+            damage = _calc_damage(int(eff_atk * 2.0))
+            actual = target.take_damage(damage)
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} の「渾身の一撃」！{debuff_note}"
+                f" → {target.name} に {actual} 大ダメージ！"
+                f"（残HP: {target.current_hp}/{target.max_hp}）"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
+        self.logs.append(
+            f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
+            f" → {target.name} に {actual} ダメージ！"
+            f"（残HP: {target.current_hp}/{target.max_hp}）"
+        )
+
+    def _enemy_turn_dark_knight(self, alive: list[Combatant], eff_atk: int, debuffed: bool) -> None:
+        """ダークナイトの行動: 防御 / 通常攻撃。"""
+        boss_mark = "👹" if self.enemy.is_boss else "👾"
+        debuff_note = "（弱体化中）" if debuffed else ""
+
+        # 防御: 次のプレイヤー側1巡のみ被ダメ半減
+        if (not self.enemy.is_defending) and random.random() < 0.35:
+            self.enemy.is_defending = True
+            self._enemy_defend_turns = 1
+            self.logs.append(
+                f"{boss_mark} {self.enemy.name} は防御体勢をとった！"
+                f"（次のターンまで被ダメージ半減）"
+            )
+            return
+
+        # 通常攻撃
+        target = random.choice(alive)
+        damage = _calc_damage(eff_atk)
+        actual = target.take_damage(damage)
         self.logs.append(
             f"{boss_mark} {self.enemy.name} の攻撃！{debuff_note}"
             f" → {target.name} に {actual} ダメージ！"

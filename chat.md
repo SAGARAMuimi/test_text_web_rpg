@@ -271,7 +271,7 @@ Flask==3.0.0 / SQLAlchemy==2.0.28 / python-dotenv==1.0.0 / pytest==7.4.0
 
 ```
 # .env
-DATABASE_URL=mysql+mysqlclient://user:pass@localhost:3306/game_db
+DATABASE_URL=mysql+mysqlclient://user:pass@db-host:3306/game_db
 
 
 Made changes.
@@ -1457,7 +1457,7 @@ Completed with input: {
 PyMySQL==1.1.0          # MIT ライセンス（純粋 Python 実装）
 
 # database.py の DATABASE_URL も変更
-DATABASE_URL=mysql+pymysql://user:pass@host:3306/dbname
+DATABASE_URL=mysql+pymysql://user:pass@db-host:3306/dbname
 ```
 
 ---
@@ -1513,14 +1513,12 @@ GitHub Copilot: 現在の接続設定ファイルを確認します。
 
 #### ③ .env（MySQL切替時の URL）
 ```diff
-- # DATABASE_URL=mysql://rpg:mY/na5ters@localhost:3306/game_db
-+ # DATABASE_URL=mysql+pymysql://rpg:mY/na5ters@localhost:3306/game_db
++ # DATABASE_URL=mysql+pymysql://user:pass@db-host:3306/game_db
 ```
 
 #### ④ config.py（docstring）
 ```diff
-- 本番 (MySQL)  : DATABASE_URL=mysql+mysqlclient://user:pass@host:3306/dbname
-+ 本番 (MySQL)  : DATABASE_URL=mysql+pymysql://user:pass@host:3306/dbname
++ 本番 (MySQL)  : DATABASE_URL=mysql+pymysql://user:pass@db-host:3306/dbname
 ```
 
 ---
@@ -1539,7 +1537,7 @@ GitHub Copilot: 現在の接続設定ファイルを確認します。
 ### 推奨 MySQL 接続 URL（切替後）
 
 ```
-DATABASE_URL=mysql+pymysql://user:pass@host:3306/dbname?charset=utf8mb4
+DATABASE_URL=mysql+pymysql://user:pass@db-host:3306/dbname?charset=utf8mb4
 ```
 
 ---
@@ -2692,7 +2690,7 @@ Made changes.
 User: クラスを増やしてバリエーションを導入したいと考えています。
 追加クラス候補を挙げてください。
 
-GitHub Copilot: [](file:///c%3A/hoge/src/webRPG2/design.rd) の読み取り
+GitHub Copilot: [](file:///c%3A/hoge/src/project_x/design.rd) の読み取り
 
 design.rdにクラス候補が既に定義されています。現行の実装との差分も踏まえて提案をまとめます。
 
@@ -3093,5 +3091,401 @@ Using "ファイル内の文字列の置換"
 | **キャラクタークラス** | 攻撃型 / 回復サポート型 / 妨害型の3カテゴリに再編、MP列・効果列を追加 |
 | **MPシステム**（新規追加） | 消費ルール・不足時の挙動・回復タイミングを記載 |
 | **バフ/デバフシステム**（新規追加） | Bard・Shaman・Paladinそれぞれの動作仕様を記載 |
+
+--
+
+User: この敵はすべて攻撃をしてくるだけですか？
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/models/enemy.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#1-1) の 1 から 320 行を読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#321-321) の 321 から 501 行を読み取り
+
+はい、現状は**全ての敵が「通常攻撃のみ」**です。  
+敵の行動処理 `Battle._enemy_turn()` では、毎ターンランダムな生存メンバー1人に攻撃するだけになっています（防御・スキル・回復などは未実装）。
+
+確認箇所: battle.py  
+また、敵モデルはステータス定義のみで行動タイプは持っていません: enemy.py
+
+必要なら、敵ごとの行動パターン（例: ボスだけ全体攻撃、一定確率で防御/自己回復）を追加できます。
+
+User: 階層ごとの敵一覧を教えてください。
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/data/db_init.sql) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/data/db_init.sql) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/models/seed_data.py) の読み取り
+
+階層ごとの敵一覧は、初期データ定義では次の通りです。  
+参照: seed_data.py
+
+- 1階層（入門の洞窟）
+  - スライム
+  - ゴブリン
+  - コボルト
+  - ゴブリン鬼長（ボス）
+
+- 2階層（試練の迷宮）
+  - オーク
+  - ウィザード
+  - トロール
+  - オークキング（ボス）
+
+- 3階層（魔王の城）
+  - ダークナイト
+  - リッチ
+  - ドラゴン（ボス）
+
+必要なら、HP/攻撃力つきの一覧にもできます。
+
+User: リッチとウィザードにｈ魔法のような行動がほしいです。
+通常攻撃とどのような差別化をすればよいでしょうか？
+
+GitHub Copilot: 良い方向です。  
+差別化は「**対象範囲・防御貫通・状態異常・詠唱/CT**」で作ると分かりやすいです。
+
+## 差別化の軸（通常攻撃との差）
+- 通常攻撃: 単体・即時・追加効果なし（基準を $1.0\times$）
+- 魔法行動:  
+  - 全体攻撃 or 防御無視  
+  - デバフ付与（弱体/呪い）  
+  - 詠唱ターンやクールダウンあり（連打不可）
+
+## ウィザード案（テクニカル）
+- `ファイアボルト`：単体 $1.4\times$、防御無視20〜30%
+- `アークフレア`：全体 $0.8\times$（2ターンCT）
+- `魔力障壁`：1ターン被ダメ半減（HP<40%で優先）
+
+**性格**: 火力高め・耐久低め。
+
+## リッチ案（いやらしいボス寄り）
+- `ライフドレイン`：単体 $1.0\times$ + 与ダメの50%自己回復
+- `呪詛`：対象の攻撃力を2ターン $0.7\times$
+- `死霊波`：全体 $0.9\times$（3ターンCT）
+
+**性格**: 継戦能力と妨害が強い。
+
+## バランス目安
+- 単体魔法: $1.3\sim1.6\times$
+- 全体魔法: $0.7\sim1.0\times$（CT必須）
+- 防御無視: ダメージ倍率を少し下げる
+- デバフ: 1〜2ターン（長すぎると理不尽）
+
+必要なら、この方針でそのまま実装用に `Enemy` ごとの行動テーブル（確率・CT付き）まで作成します。
+
+User: 実装してください。
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/tests/__init__.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/tests/test_battle.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py) の読み取り
+
+Using "パッチの適用"
+
+
+```
+
+```
+
+
+チェックされた [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py)、問題は見つかりませんでした
+
+実装しました。  
+`ウィザード` と `リッチ` に魔法系行動を追加し、通常攻撃と差別化しています。
+
+変更ファイル: battle.py
+
+追加内容（要点）:
+- `Battle._enemy_turn()` を拡張し、敵名で行動分岐
+  - `ウィザード`:  
+    - `アークフレア`（全体魔法・CTあり）  
+    - `ファイアボルト`（単体高火力・防御無視）  
+    - 通常攻撃
+  - `リッチ`:  
+    - `死霊波`（全体魔法・CTあり）  
+    - `ライフドレイン`（与ダメの一部を自己回復）  
+    - `呪詛`（対象の次攻撃を弱体化）  
+    - 通常攻撃
+- 敵スキルのクールダウン管理を追加
+  - `Battle._enemy_cooldowns`
+  - `Battle._tick_enemy_cooldowns()`
+- セッション保存/復元にクールダウン状態を追加
+  - `to_session_dict()`
+  - `from_session_dict()`
+
+補足:
+- 既存の `Shaman` の弱体（敵の次行動だけ攻撃低下）とも整合するように、敵側の弱体は「次行動で消費」のまま維持しています。  
+- 構文エラーはありません。
+
+Made changes.
+
+User: - オークキング
+  - 薙ぎ払い
+    防御友好の全体攻撃
+  - 渾身の一撃
+- ドラゴン
+  - ブレス
+    防御半減の全体攻撃
+を追加してください。
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#470-470) の 470 から 641 行を読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#120-120) の 120 から 270 行を読み取り
+
+Using "パッチの適用"
+
+
+```
+
+```
+
+
+チェックされた [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py)、問題は見つかりませんでした
+
+追加実装しました。  
+対象は battle.py です。
+
+実装内容:
+- オークキング
+  - `薙ぎ払い`（全体攻撃）
+    - 防御は有効（`take_damage()` を使用）
+    - 2ターンクールダウン
+  - `渾身の一撃`（単体高倍率）
+- ドラゴン
+  - `ブレス`（全体攻撃）
+    - 防御効果を半減（防御中でも 25% 軽減止まり）
+    - 2ターンクールダウン
+
+あわせて:
+- 敵行動分岐に `オークキング` / `ドラゴン` を追加
+- クールダウン管理 `self._enemy_cooldowns` に以下を追加
+  - `ork_king_sweep`
+  - `dragon_breath`
+- セッション保存/復元にも同項目を反映
+
+構文エラーはありません。
+
+Made changes.
+
+User: トロールに渾身の一撃、ダークナイトに防御を追加してください。
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#500-500) の 500 から 744 行を読み取り
+
+Using "パッチの適用"
+
+
+```
+
+```
+
+
+チェックされた [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py)、問題は見つかりませんでした
+
+実装しました。  
+[ battle.py ](text_rpg/game/battle.py) に以下を追加済みです。
+
+- トロール
+  - `渾身の一撃`（単体 $2.0\times$）を確率発動
+  - それ以外は通常攻撃
+
+- ダークナイト
+  - `防御` を確率発動
+  - 防御は「次のプレイヤー側1巡だけ」有効になるように実装
+  - それ以外は通常攻撃
+
+内部対応:
+- `_enemy_turn()` に `トロール` / `ダークナイト` の分岐追加
+- 新規メソッド ` _enemy_turn_troll()` / ` _enemy_turn_dark_knight()` 追加
+- 敵防御の持続管理として `self._enemy_defend_turns` を追加
+- セッション保存/復元に ` _enemy_defend_turns` も反映
+
+エラーはありません。
+
+Made changes.
+
+User: 戦闘バランスを確認できますか？
+
+GitHub Copilot: Configuring a Python Environment
+Completed with input: {
+  "resourcePath": "c:\\Users\\USER\\OneDrive\\ドキュメント\\src\\webGame"
+}
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/models/character.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/models/enemy.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/models/seed_data.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/dungeon.py#1-1) の 1 から 340 行を読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/app.py) の読み取り
+
+正規表現 `class_type|Fighter|Mage|Rogue|Cleric|Archer|Monk|Spellsword|Shaman|Paladin|Bard` (`**/text_rpg/**`) を検索し、結果は 20 件でした
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/config.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/app.py) の読み取り
+
+[](file:///c%3A/hoge/src/webGame/app.py) の読み取り
+
+`pylanceRunCodeSnippet` を実行しました
+Completed with input: {
+  "workspaceRoot": "c:\\Users\\USER\\OneDrive\\ドキュメント\\src\\webGame",
+  "workingDirectory": "c:\\Users\\USER\\OneDrive\\ドキュメント\\src\\webGame",
+  "timeout": 120,
+  "codeSnippet": "import random\nfrom types import SimpleNamespace\nfrom collections import defaultdict\n\nfrom text_rpg.game.battle import Battle\nfrom app import CHARACTER_TEMPLATES\n\nENEMIES = [\n    (1, \"スライム\", 50, 8, 0),\n    (1, \"ゴブリン\", 70, 12, 0),\n    (1, \"コボルト\", 60, 10, 0),\n    (1, \"ゴブリン鬼長\", 150, 20, 1),\n    (2, \"オーク\", 120, 18, 0),\n    (2, \"ウィザード\", 90, 25, 0),\n    (2, \"トロール\", 140, 20, 0),\n    (2, \"オークキング\", 250, 35, 1),\n    (3, \"ダークナイト\", 180, 30, 0),\n    (3, \"リッチ\", 160, 35, 0),\n    (3, \"ドラゴン\", 500, 50, 1),\n]\n\n\ndef make_char(class_type: str):\n    t = CHARACTER_TEMPLATES[class_type]\n    return SimpleNamespace(\n        name=t[\"class_name\"],\n        hp=t[\"hp\"],\n        attack=t[\"attack\"],\n        class_type=class_type,\n        mp=t[\"mp\"],\n        max_mp=t[\"mp\"],\n        level=1,\n        id=0,\n    )\n\n\ndef choose_action(b: Battle, idx: int):\n    f = b.fighters[idx]\n    if not f.is_alive:\n        return \"attack\", 0\n\n    # 僧侶は危険時に回復\n    if f.class_type == \"Cleric\":\n        alive = [x for x in b.fighters if x.is_alive]\n        low_targets = [i for i, x in enumerate(alive) if x.current_hp / x.max_hp <= 0.65]\n        skill = b.get_skill_info(idx)\n        if low_targets and f.current_mp >= skill.get(\"mp_cost\", 0):\n            return \"skill\", low_targets[0]\n\n    # パラディンは被害が出てきたら聖域\n    if f.class_type == \"Paladin\":\n        skill = b.get_skill_info(idx)\n        injured = any((x.current_hp / x.max_hp) <= 0.8 for x in b.fighters if x.is_alive)\n        if injured and f.current_mp >= skill.get(\"mp_cost\", 0):\n            return \"skill\", 0\n\n    # バードは開幕〜中盤で強化\n    if f.class_type == \"Bard\":\n        skill = b.get_skill_info(idx)\n        if f.current_mp >= skill.get(\"mp_cost\", 0):\n            return \"skill\", 0\n\n    # シャーマンは優先して弱体\n    if f.class_type == \"Shaman\":\n        skill = b.get_skill_info(idx)\n        if f.current_mp >= skill.get(\"mp_cost\", 0):\n            return \"skill\", 0\n\n    # それ以外はMPがあればスキル優先\n    skill = b.get_skill_info(idx)\n    if f.current_mp >= skill.get(\"mp_cost\", 0):\n        return \"skill\", 0\n    return \"attack\", 0\n\n\ndef run_once(enemy_tuple, party_classes, seed):\n    random.seed(seed)\n    floor, name, hp, atk, is_boss = enemy_tuple\n    party = [make_char(c) for c in party_classes]\n    enemy = SimpleNamespace(name=name, hp=hp, attack=atk, is_boss=is_boss)\n    b = Battle(party, enemy)\n\n    steps = 0\n    while not b.is_over and steps < 200:\n        # UIと同じく、行動可能な最初のキャラを順に処理\n        acted_any = False\n        for i, f in enumerate(b.fighters):\n            if b.is_over:\n                break\n            if f.is_alive and not b._acted[i]:\n                action, tgt = choose_action(b, i)\n                b.process_turn(i, action, tgt)\n                steps += 1\n                acted_any = True\n        if not acted_any:\n            break\n\n    alive = [f for f in b.fighters if f.is_alive]\n    hp_ratio = (sum(f.current_hp for f in alive) / sum(f.max_hp for f in b.fighters)) if b.fighters else 0.0\n    return b.result, hp_ratio, steps\n\n\ndef evaluate(party_classes, n=300):\n    out = {}\n    for enemy in ENEMIES:\n        wins = 0\n        hp_acc = 0.0\n        steps_acc = 0\n        for k in range(n):\n            r, hp_ratio, steps = run_once(enemy, party_classes, seed=100000 + k)\n            if r == \"victory\":\n                wins += 1\n            hp_acc += hp_ratio\n            steps_acc += steps\n        out[enemy[1]] = {\n            \"floor\": enemy[0],\n            \"boss\": bool(enemy[4]),\n            \"win_rate\": wins / n,\n            \"avg_hp_ratio\": hp_acc / n,\n            \"avg_steps\": steps_acc / n,\n        }\n    return out\n\nparties = {\n    \"balanced\": [\"Fighter\", \"Mage\", \"Cleric\", \"Paladin\"],\n    \"offense\": [\"Fighter\", \"Mage\", \"Rogue\", \"Archer\"],\n}\n\nall_results = {name: evaluate(party, n=300) for name, party in parties.items()}\n\nfor pname, result in all_results.items():\n    print(f\"\\n=== {pname} ===\")\n    for ename, r in result.items():\n        print(\n            f\"{r['floor']}F {ename:8s} \"\n            f\"win={r['win_rate']*100:5.1f}% \"\n            f\"hp={r['avg_hp_ratio']*100:5.1f}% \"\n            f\"steps={r['avg_steps']:4.1f}\"\n        )"
+}
+
+`pylanceRunCodeSnippet` を実行しました
+Completed with input: {
+  "workspaceRoot": "c:\\Users\\USER\\OneDrive\\ドキュメント\\src\\webGame",
+  "workingDirectory": "c:\\Users\\USER\\OneDrive\\ドキュメント\\src\\webGame",
+  "timeout": 120,
+  "codeSnippet": "import random\nfrom types import SimpleNamespace\n\nfrom text_rpg.game.battle import Battle\n\nCHARACTER_TEMPLATES = {\n    \"Fighter\":    {\"class_name\": \"戦士\",      \"hp\": 100, \"attack\": 20, \"mp\": 60},\n    \"Mage\":       {\"class_name\": \"魔法使い\",  \"hp\":  70, \"attack\": 30, \"mp\": 80},\n    \"Rogue\":      {\"class_name\": \"盗賊\",      \"hp\":  80, \"attack\": 25, \"mp\": 50},\n    \"Cleric\":     {\"class_name\": \"僧侶\",      \"hp\":  90, \"attack\": 15, \"mp\": 80},\n    \"Archer\":     {\"class_name\": \"弓使い\",    \"hp\":  85, \"attack\": 22, \"mp\": 60},\n    \"Monk\":       {\"class_name\": \"修行僧\",    \"hp\":  95, \"attack\": 18, \"mp\": 55},\n    \"Spellsword\": {\"class_name\": \"魔法戦士\",  \"hp\":  90, \"attack\": 23, \"mp\": 65},\n    \"Shaman\":     {\"class_name\": \"呪術師\",    \"hp\":  75, \"attack\": 18, \"mp\": 75},\n    \"Paladin\":    {\"class_name\": \"聖騎士\",    \"hp\": 110, \"attack\": 16, \"mp\": 75},\n    \"Bard\":       {\"class_name\": \"バード\",    \"hp\":  80, \"attack\": 14, \"mp\": 90},\n}\n\nENEMIES = [\n    (1, \"スライム\", 50, 8, 0),\n    (1, \"ゴブリン\", 70, 12, 0),\n    (1, \"コボルト\", 60, 10, 0),\n    (1, \"ゴブリン鬼長\", 150, 20, 1),\n    (2, \"オーク\", 120, 18, 0),\n    (2, \"ウィザード\", 90, 25, 0),\n    (2, \"トロール\", 140, 20, 0),\n    (2, \"オークキング\", 250, 35, 1),\n    (3, \"ダークナイト\", 180, 30, 0),\n    (3, \"リッチ\", 160, 35, 0),\n    (3, \"ドラゴン\", 500, 50, 1),\n]\n\ndef make_char(class_type: str):\n    t = CHARACTER_TEMPLATES[class_type]\n    return SimpleNamespace(\n        name=t[\"class_name\"], hp=t[\"hp\"], attack=t[\"attack\"],\n        class_type=class_type, mp=t[\"mp\"], max_mp=t[\"mp\"], level=1, id=0\n    )\n\ndef choose_action(b: Battle, idx: int):\n    f = b.fighters[idx]\n    if not f.is_alive:\n        return \"attack\", 0\n    skill = b.get_skill_info(idx)\n    mp_cost = skill.get(\"mp_cost\", 0)\n\n    if f.class_type == \"Cleric\":\n        alive = [x for x in b.fighters if x.is_alive]\n        low = [i for i, x in enumerate(alive) if x.current_hp / x.max_hp <= 0.65]\n        if low and f.current_mp >= mp_cost:\n            return \"skill\", low[0]\n\n    if f.class_type == \"Paladin\":\n        injured = any((x.current_hp / x.max_hp) <= 0.8 for x in b.fighters if x.is_alive)\n        if injured and f.current_mp >= mp_cost:\n            return \"skill\", 0\n\n    if f.class_type in {\"Shaman\", \"Bard\"} and f.current_mp >= mp_cost:\n        return \"skill\", 0\n\n    if f.current_mp >= mp_cost:\n        return \"skill\", 0\n    return \"attack\", 0\n\ndef run_once(enemy_tuple, party_classes, seed):\n    random.seed(seed)\n    _, name, hp, atk, is_boss = enemy_tuple\n    party = [make_char(c) for c in party_classes]\n    enemy = SimpleNamespace(name=name, hp=hp, attack=atk, is_boss=is_boss)\n    b = Battle(party, enemy)\n\n    steps = 0\n    while not b.is_over and steps < 200:\n        progressed = False\n        for i, f in enumerate(b.fighters):\n            if b.is_over:\n                break\n            if f.is_alive and not b._acted[i]:\n                action, tgt = choose_action(b, i)\n                b.process_turn(i, action, tgt)\n                steps += 1\n                progressed = True\n        if not progressed:\n            break\n\n    hp_ratio = sum(f.current_hp for f in b.fighters if f.is_alive) / sum(f.max_hp for f in b.fighters)\n    return b.result == \"victory\", hp_ratio, steps\n\ndef evaluate(party_classes, n=120):\n    rows = []\n    for enemy in ENEMIES:\n        wins = 0\n        hp_sum = 0.0\n        steps_sum = 0\n        for i in range(n):\n            win, hp_ratio, steps = run_once(enemy, party_classes, 50000 + i)\n            wins += int(win)\n            hp_sum += hp_ratio\n            steps_sum += steps\n        rows.append((enemy[0], enemy[1], bool(enemy[4]), wins/n, hp_sum/n, steps_sum/n))\n    return rows\n\nparties = {\n    \"balanced\": [\"Fighter\", \"Mage\", \"Cleric\", \"Paladin\"],\n    \"offense\": [\"Fighter\", \"Mage\", \"Rogue\", \"Archer\"],\n}\n\nfor pname, party in parties.items():\n    print(f\"\\n=== {pname} {party} ===\")\n    for floor, name, is_boss, wr, hp, st in evaluate(party):\n        tag = \"BOSS\" if is_boss else \"\"\n        print(f\"{floor}F {name:8s} {tag:4s} win={wr*100:5.1f}% hp={hp*100:5.1f}% steps={st:4.1f}\")"
+}
+
+Ran terminal command: Set-Location "C:\hoge\src\webGame"; $code = @'
+import random
+from types import SimpleNamespace
+from text_rpg.game.battle import Battle
+
+CT={"Fighter":(100,20,60),"Mage":(70,30,80),"Rogue":(80,25,50),"Cleric":(90,15,80),"Archer":(85,22,60),"Paladin":(110,16,75)}
+EN=[(1,"スライム",50,8,0),(1,"ゴブリン",70,12,0),(1,"コボルト",60,10,0),(1,"ゴブリン鬼長",150,20,1),(2,"オーク",120,18,0),(2,"ウィザード",90,25,0),(2,"トロール",140,20,0),(2,"オークキング",250,35,1),(3,"ダークナイト",180,30,0),(3,"リッチ",160,35,0),(3,"ドラゴン",500,50,1)]
+
+def mk(c):
+    hp,atk,mp=CT[c]
+    return SimpleNamespace(name=c,hp=hp,attack=atk,class_type=c,mp=mp,max_mp=mp)
+
+def act(b,i):
+    f=b.fighters[i]; s=b.get_skill_info(i); c=s.get("mp_cost",0)
+    if f.class_type=="Cleric":
+      alive=[x for x in b.fighters if x.is_alive]
+      low=[k for k,x in enumerate(alive) if x.current_hp/x.max_hp<=0.65]
+      if low and f.current_mp>=c: return "skill",low[0]
+    if f.class_type=="Paladin":
+      if any(x.current_hp/x.max_hp<=0.8 for x in b.fighters if x.is_alive) and f.current_mp>=c: return "skill",0
+    if f.current_mp>=c: return "skill",0
+    return "attack",0
+
+def run(enemy,party,seed):
+    random.seed(seed)
+    _,n,hp,atk,boss=enemy
+    b=Battle([mk(c) for c in party],SimpleNamespace(name=n,hp=hp,attack=atk,is_boss=boss))
+    t=0
+    while not b.is_over and t<200:
+      p=False
+      for i,f in enumerate(b.fighters):
+        if b.is_over: break
+        if f.is_alive and not b._acted[i]:
+          a,g=act(b,i); b.process_turn(i,a,g); t+=1; p=True
+      if not p: break
+    hp_ratio=sum(f.current_hp for f in b.fighters if f.is_alive)/sum(f.max_hp for f in b.fighters)
+    return b.result=="victory",hp_ratio,t
+
+def eval(party,n=100):
+  out=[]
+  for e in EN:
+    w=h=s=0
+    for i in range(n):
+      ww,hh,ss=run(e,party,7000+i); w+=ww; h+=hh; s+=ss
+    out.append((e[0],e[1],w/n,h/n,s/n,e[4]))
+  return out
+
+for name,party in [("balanced",["Fighter","Mage","Cleric","Paladin"]),("offense",["Fighter","Mage","Rogue","Archer"])]:
+  print("\n===",name,party,"===")
+  for f,n,w,h,s,b in eval(party):
+    print(f"{f}F {n:8s} {'BOSS' if b else '    '} win={w*100:5.1f}% hp={h*100:5.1f}% steps={s:4.1f}")
+'@; Set-Content -Path .\_tmp_balance_check.py -Value $code -Encoding UTF8; C:/hoge/src/webGame/venv/Scripts/python.exe .\_tmp_balance_check.py
+
+Ran terminal command: C:/hoge/src/webGame/venv/Scripts/python.exe .\_tmp_balance_check.py
+
+[](file:///c%3A/hoge/src/webGame/_tmp_balance_check.py) が作成されました
+
+Ran terminal command: C:/hoge/src/webGame/venv/Scripts/python.exe C:/hoge/src/webGame/_tmp_balance_check.py
+
+Using "パッチの適用"
+
+`**/_tmp_balance_check.py` に一致するファイルを検索しました。1 件の一致
+
+Ran terminal command: Remove-Item "C:\hoge\src\webGame\_tmp_balance_check.py" -ErrorAction SilentlyContinue
+
+`**/_tmp_balance_check.py` に一致するファイルを検索しました。一致するものはありません
+
+はい、簡易シミュレーションで確認しました。  
+判定ロジックは現行の battle.py をそのまま使用しています。
+
+前提（自動行動AI）:
+- 2編成で各敵100戦
+- 編成A: Fighter / Mage / Cleric / Paladin（安定）
+- 編成B: Fighter / Mage / Rogue / Archer（火力）
+
+結果要約:
+- 1F〜3F通常敵、2Fボス、3Fのダークナイト/リッチ  
+  - **ほぼ勝率100%**
+- 3Fボス「ドラゴン」  
+  - 編成A: **勝率20%**（かなり厳しい）  
+  - 編成B: **勝率91%**（かなり易しい）
+
+結論:
+- 現状は**中盤まで全体的に易しめ**です。  
+- 最終ボスだけ、**編成依存で難易度差が大きい**状態です（ヒーラー入りで苦戦、火力編成で突破しやすい）。
+
+必要なら次に、目標勝率（例: 最終ボス $60\\%-70\\%$）に合わせて、`ドラゴン` の `hp` / `attack` / `ブレス確率・CT` を具体値で再調整します。
+
+Made changes.
+
+User: 再編成してください。
+
+GitHub Copilot: [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#1-1) の 1 から 220 行を読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py#500-500) の 500 から 813 行を読み取り
+
+[](file:///c%3A/hoge/src/webGame/text_rpg/models/seed_data.py) の読み取り
+
+Using "パッチの適用"
+
+
+```
+
+```
+
+
+Using "パッチの適用"
+
+
+```
+
+```
+
+
+チェックされた [](file:///c%3A/Hoge/src/webGame/text_rpg/models/seed_data.py), [](file:///c%3A/hoge/src/webGame/text_rpg/game/battle.py)、問題は見つかりませんでした
+
+[](file:///c%3A/hoge/src/webGame/_tmp_balance_check.py) が作成されました
+
+Ran terminal command: C:/hoge/src/webGame/venv/Scripts/python.exe C:/hoge/src/webGame/_tmp_balance_check.py
+
+Ran terminal command: Remove-Item "C:\hoge\src\webGame\_tmp_balance_check.py" -ErrorAction SilentlyContinue
+
+再編成しました。  
+調整は完了済みです。
+
+変更箇所:
+- 敵ステータス再編成（2F/3F中心）: seed_data.py
+- ドラゴンの`ブレス`を再調整（発動率・CT・威力）: battle.py
+
+主な内容:
+- 2F〜3Fの通常敵/ボスを強化（`hp`/`attack`）
+- ドラゴンは編成差が出すぎないように調整  
+  - `ブレス`発動率: 0.45 → 0.30  
+  - `ブレス`CT: 2 → 3  
+  - `ブレス`倍率: 1.1 → 1.0
+- `seed_enemies()`を「スキップ」方式から「投入/更新（upsert）」方式へ変更  
+  既存DBでも再起動時に値更新されます。
+
+補足:
+- 反映はアプリ再起動でOKです（起動時に`seed_enemies()`が走るため）。
 
 Made changes.
